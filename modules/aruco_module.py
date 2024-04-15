@@ -14,6 +14,8 @@ class ArUcoDetector:
         """
         self.aruco_dict = aruco.getPredefinedDictionary(dictionary_name)
         self.parameters = aruco.DetectorParameters()
+        # 调整参数以提高识别率
+        self.parameters.adaptiveThreshConstant = 7
         self.parameters.adaptiveThreshWinSizeMin = 3
         self.parameters.adaptiveThreshWinSizeMax = 23
         self.parameters.adaptiveThreshWinSizeStep = 10
@@ -21,14 +23,13 @@ class ArUcoDetector:
         self.dist_coeffs = dist_coeffs
         self.marker_length = marker_length
         self.transformation_matrix_to_world = np.eye(4)  # 初始化为单位矩阵
+        self.all_tvecs = []
 
     # 预处理，但目前发现一预处理就识别不出来了，先暂时不动了
     def preprocess_image(self, image):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        gray = clahe.apply(gray)
-        processed_image = cv2.GaussianBlur(gray, (5, 5), 0)
-        return processed_image
+
+        return gray
 
     def detect_markers(self, image):
         """ 检测图像中的所有 ArUco 标记
@@ -41,6 +42,7 @@ class ArUcoDetector:
         corners, ids, rejected = aruco.detectMarkers(processed_image, self.aruco_dict, parameters=self.parameters)
         if ids is not None:
             print(f"Detected markers: {ids.flatten()}")
+
 
         return corners, ids, rejected
 
@@ -55,6 +57,7 @@ class ArUcoDetector:
         if ids is not None and len(ids) > 0:
             rvecs, tvecs, _ = aruco.estimatePoseSingleMarkers(corners, self.marker_length, self.camera_matrix,
                                                               self.dist_coeffs)
+            self.all_tvecs.extend(tvecs)
             return rvecs, tvecs
         return None, None
 
@@ -110,6 +113,13 @@ class ArUcoDetector:
         world_position = np.dot(self.transformation_matrix_to_world, transform_matrix)
         return world_position[:3, 3]
 
+    def update_world_origin(self):
+        """ 更新世界坐标系原点为所有标记的平均位置 """
+        if self.all_tvecs:
+            average_tvec = np.mean(np.array(self.all_tvecs), axis=0).flatten()
+            self.transformation_matrix_to_world[:3, 3] = -average_tvec
+            self.all_tvecs = []
+
     def draw_markers(self, image, corners, rvecs, tvecs):
         """ 在图像上绘制标记的边界、中心点和标记的世界坐标 """
         for i, corner in enumerate(corners):
@@ -127,12 +137,13 @@ class ArUcoDetector:
 
             # 在标记的中心下方添加坐标文本
             cv2.putText(image, world_pos_str, (center[0] + 10, center[1] + 10), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5, (255, 0, 0), 1, cv2.LINE_AA)
+                        0.5, (0, 255, 0), 1, cv2.LINE_AA)
 
             # 处理相机矩阵以确保其为浮点类型
             camera_matrix_float = np.array(self.camera_matrix, dtype=np.float64)
 
             origin_world_position = np.array([0, 0, 0], dtype=np.float32).reshape(1, 1, 3)
+            origin_world_position = self.get_marker_world_position(np.zeros((3, 1)), origin_world_position[0])
             origin_image_point, _ = cv2.projectPoints(origin_world_position,
                                                       np.zeros((3, 1)), np.zeros((3, 1)),
                                                       camera_matrix_float, self.dist_coeffs)

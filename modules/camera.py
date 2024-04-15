@@ -11,6 +11,9 @@ class Camera:
         if not self.cap.isOpened():
             raise Exception("Camera could not be opened")
 
+        # 检查分辨率是否设置成功
+        print("分辨率: ", self.cap.get(cv2.CAP_PROP_FRAME_WIDTH), "x", self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
     def capture_frame(self):
         """捕获一帧图像
         Returns:

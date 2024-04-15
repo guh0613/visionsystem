@@ -9,7 +9,7 @@ class VisionSystem:
     def __init__(self, camera_params, marker_length):
         self.camera_matrix, self.dist_coeffs = camera_params
         self.marker_length = marker_length
-        self.detector = ArUcoDetector(cv2.aruco.DICT_6X6_50, self.camera_matrix, self.dist_coeffs, self.marker_length)
+        self.detector = ArUcoDetector(cv2.aruco.DICT_6X6_250, self.camera_matrix, self.dist_coeffs, self.marker_length)
         self.kalman_filter = KalmanFilter(state_dim=6, measure_dim=6)
         self.camera = Camera()
 
@@ -20,6 +20,7 @@ class VisionSystem:
         world_positions = []
         if ids is not None:
             rvecs, tvecs = self.detector.estimate_pose(corners, ids)
+            self.detector.update_world_origin()
             for rvec, tvec in zip(rvecs, tvecs):
                 measure = np.vstack((rvec, tvec))
                 self.kalman_filter.predict()
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     # 摄像头参数，手头没摄像头，瞎写一个
     camera_matrix = np.array([[1000, 0, 320], [0, 1000, 240], [0, 0, 1]])
     dist_coeffs = np.zeros((4, 1))
-    system = VisionSystem((camera_matrix, dist_coeffs), marker_length=0.1)
+    system = VisionSystem((camera_matrix, dist_coeffs), marker_length=1)
 
     positions, states, image, corners, tvecs, rvecs = system.capture_and_process()
     print("Detected positions:", positions)
